@@ -1,0 +1,30 @@
+const express = require("express");
+const authenticate = require("../middleware/authenticate");
+const { uploadAvatar: uploadAvatarConfig, uploadLogo: uploadLogoConfig } = require("../config/upload");
+const { uploadAvatar, uploadLogo } = require("../controllers/uploadController");
+
+const router = express.Router();
+
+router.use(authenticate);
+
+/**
+ * POST /api/upload/avatar
+ * Champ form-data : "avatar" (fichier image)
+ */
+router.post(
+  "/avatar",
+  uploadAvatarConfig.single("avatar"),
+  uploadAvatar
+);
+
+/**
+ * POST /api/upload/logo
+ * Champ form-data : "logo" (fichier image)
+ */
+router.post(
+  "/logo",
+  uploadLogoConfig.single("logo"),
+  uploadLogo
+);
+
+module.exports = router;
