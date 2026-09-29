@@ -101,53 +101,41 @@ export default function Subscription() {
         </div>
       )}
 
-      <div className="grid md:grid-cols-2 gap-8 items-start">
-        <Card className="border-primary">
-          <CardHeader>
-            <CardTitle>Plan actuel: <span className="capitalize">{user?.plan || "Free"}</span></CardTitle>
-            <CardDescription>
-              {user?.plan === "premium"
-                ? "Vous bénéficiez de toutes les fonctionnalités premium."
-                : "Passez à la vitesse supérieure avec le plan Premium."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {user?.plan !== "premium" && (
-              <div className="space-y-6">
-                <div className="text-3xl font-bold font-display text-primary">
-                  360 FCFA <span className="text-sm font-normal text-muted-foreground">/ mois</span>
-                </div>
-                <ul className="space-y-3">
-                  {["Projets illimités", "Thèmes premium", "Analytiques avancées", "Gains de parrainage"].map((feat, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm">
-                      <div className="bg-primary/10 text-primary rounded-full p-1">
-                        <Check className="w-3 h-3" />
-                      </div>
-                      {feat}
-                    </li>
-                  ))}
-                </ul>
+      {/* Plan Premium actif */}
+      {user?.plan === "premium" && (
+        <div className="grid md:grid-cols-2 gap-8 items-start">
+          <Card className="border-emerald-500/30 bg-emerald-500/5">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-emerald-600">
+                <ShieldCheck className="w-5 h-5" /> Plan Pro actif
+              </CardTitle>
+              <CardDescription>Vous bénéficiez de toutes les fonctionnalités premium.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <ul className="space-y-3">
+                {["Projets illimités", "Thèmes premium", "Analytiques avancées", "Gains de parrainage"].map((feat, i) => (
+                  <li key={i} className="flex items-center gap-2 text-sm">
+                    <div className="bg-emerald-500/10 text-emerald-600 rounded-full p-1"><Check className="w-3 h-3" /></div>
+                    {feat}
+                  </li>
+                ))}
+              </ul>
+              <div className="pt-4 border-t">
+                <p className="text-xs text-muted-foreground">Renouvellement mensuel automatique</p>
+                <p className="font-bold text-sm mt-1">360 FCFA / mois via Mobile Money</p>
               </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {user?.plan !== "premium" && (
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-primary" />
-                Paiement Sécurisé
-              </CardTitle>
-              <CardDescription>Payez facilement par Mobile Money</CardDescription>
+              <CardTitle>Renouveler l'abonnement</CardTitle>
+              <CardDescription>Payez le mois suivant via Mobile Money</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Opérateur</Label>
                 <Select value={operator} onValueChange={(v: any) => setOperator(v)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="mtn">MTN Mobile Money</SelectItem>
                     <SelectItem value="moov">Moov Money</SelectItem>
@@ -157,23 +145,74 @@ export default function Subscription() {
               </div>
               <div className="space-y-2">
                 <Label>Numéro de téléphone</Label>
-                <Input
-                  placeholder="Ex: +229..."
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                />
+                <Input placeholder="Ex: +229..." value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
               </div>
-              <Button
-                className="w-full"
-                onClick={handlePayment}
-                disabled={paymentMutation.isPending}
-              >
+              <Button className="w-full" onClick={handlePayment} disabled={paymentMutation.isPending}>
                 {paymentMutation.isPending ? "Initiation..." : "Payer 360 FCFA"}
               </Button>
             </CardContent>
           </Card>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Plan Free — formulaire de passage Pro */}
+      {user?.plan !== "premium" && (
+        <div className="grid md:grid-cols-2 gap-8 items-start">
+          <Card className="border-primary">
+            <CardHeader>
+              <CardTitle>Passez au plan Pro</CardTitle>
+              <CardDescription>Débloquez toutes les fonctionnalités pour 360 FCFA/mois.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <div className="text-3xl font-bold font-display text-primary">
+                  360 FCFA <span className="text-sm font-normal text-muted-foreground">/ mois</span>
+                </div>
+                <ul className="space-y-3">
+                  {["Projets illimités", "Thèmes premium", "Analytiques avancées", "Gains de parrainage"].map((feat, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm">
+                      <div className="bg-primary/10 text-primary rounded-full p-1"><Check className="w-3 h-3" /></div>
+                      {feat}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-primary" />
+                Paiement Sécurisé
+              </CardTitle>
+              <CardDescription>
+                Après le clic, vous recevrez une notification sur votre téléphone pour confirmer le paiement.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Opérateur</Label>
+                <Select value={operator} onValueChange={(v: any) => setOperator(v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mtn">MTN Mobile Money</SelectItem>
+                    <SelectItem value="moov">Moov Money</SelectItem>
+                    <SelectItem value="wave">Wave</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Numéro de téléphone</Label>
+                <Input placeholder="Ex: +229..." value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
+              </div>
+              <Button className="w-full" onClick={handlePayment} disabled={paymentMutation.isPending}>
+                {paymentMutation.isPending ? "Initiation en cours..." : "Payer 360 FCFA — Devenir Pro"}
+              </Button>
+              <p className="text-xs text-center text-muted-foreground">Vous recevrez une notification sur votre téléphone pour valider.</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </DashboardLayout>
   );
 }

@@ -2,7 +2,8 @@ import { useGetDashboardSummary, useGetProfile, useGetProjects, getGetDashboardS
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link } from "wouter";
-import { Eye, Users, Wallet, ExternalLink, ArrowRight, BarChart3, CheckCircle2, Circle, ChevronRight } from "lucide-react";
+import { useAuth } from "@/contexts/auth";
+import { Eye, Users, Wallet, ExternalLink, ArrowRight, BarChart3, CheckCircle2, Circle, ChevronRight, Zap } from "lucide-react";
 
 const MOCK_SUMMARY = {
   plan: "premium" as const,
@@ -65,6 +66,7 @@ function getCompletionMessage(score: number): { emoji: string; title: string; de
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const { data: fetchedSummary } = useGetDashboardSummary({
     query: { queryKey: getGetDashboardSummaryQueryKey(), retry: false, placeholderData: MOCK_SUMMARY },
   });
@@ -76,6 +78,8 @@ export default function Dashboard() {
   });
 
   const summary = fetchedSummary ?? MOCK_SUMMARY;
+  // Utilise le vrai username de l'utilisateur connecté
+  const portfolioUrl = user?.username ? `/portfolio/${user.username}` : summary.portfolioUrl;
   const steps = getCompletionSteps(profile, projects as any[]);
   const totalPoints = steps.reduce((acc, s) => acc + s.points, 0);
   const earnedPoints = steps.filter(s => s.done).reduce((acc, s) => acc + s.points, 0);
@@ -92,8 +96,8 @@ export default function Dashboard() {
           <p className="text-muted-foreground mt-1">Bienvenue sur votre espace AfriFolio.</p>
         </div>
         <div className="flex items-center gap-3">
-          {summary.portfolioUrl && (
-            <a href={summary.portfolioUrl} target="_blank" rel="noopener noreferrer"
+          {portfolioUrl && (
+            <a href={portfolioUrl} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-2 rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 text-sm font-medium transition-colors">
               Voir mon portfolio <ExternalLink className="w-4 h-4" />
             </a>
@@ -104,6 +108,24 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {/* ── Banner Pro pour utilisateurs free ── */}
+      {(summary.plan === "free" || user?.plan === "free") && (
+        <div className="relative overflow-hidden bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-primary/15 flex items-center justify-center shrink-0">
+              <Zap className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-bold text-sm">Passez au plan Pro — 360 FCFA/mois</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Projets illimités · Analytics · Parrainage · Paiement Mobile Money</p>
+            </div>
+          </div>
+          <Link href="/dashboard/abonnement" className="shrink-0 inline-flex items-center gap-2 bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-full hover:bg-primary/90 transition-all shadow-lg shadow-primary/20">
+            Passer Pro <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      )}
 
       {/* ── Barre de complétion du portfolio ── */}
       <div className="bg-card border rounded-2xl p-5 mb-8 shadow-sm">

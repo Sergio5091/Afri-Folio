@@ -615,8 +615,8 @@ export default function PublicPortfolio() {
             {profile.twitter && <SocialBtn href={profile.twitter} icon={<Twitter className="w-4 h-4" />} border={border} muted={muted} />}
             {profile.website && <SocialBtn href={profile.website} icon={<Globe className="w-4 h-4" />} border={border} muted={muted} />}
           </div>
-          <a href="/" className={`text-xs ${muted} hover:opacity-100 transition-opacity`}>
-            Créé avec <span style={{ color: primary }}>AfriFolio</span>
+          <a href="/inscription" className={`text-xs font-medium hover:opacity-100 transition-opacity`} style={{ color: primary }}>
+            Créer mon portfolio gratuit avec AfriFolio →
           </a>
         </div>
       </footer>

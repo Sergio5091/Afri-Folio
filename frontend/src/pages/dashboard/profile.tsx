@@ -291,6 +291,12 @@ export default function ProfileEdit() {
   // N'utiliser le mock que si l'API a échoué ET qu'on n'est plus en chargement
   const profile = profileData ?? (!isLoading ? MOCK_PROFILE : null);
 
+  // Verrouillage du domaine d'activité.
+  // null = en attente du chargement du profil (on n'affiche rien encore)
+  // true = domaine choisi et verrouillé
+  // false = domaine non choisi, overlay visible
+  const [categoryLocked, setCategoryLocked] = useState<boolean | null>(null);
+
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
@@ -348,6 +354,8 @@ export default function ProfileEdit() {
         satisfiedClients: profile.satisfiedClients || null,
         availableForWork: profile.availableForWork ?? true,
       });
+      // Verrouiller le domaine si déjà choisi, sinon ouvrir l'overlay
+      setCategoryLocked(!!profile.profileType);
       initializedRef.current = true;
     }
   }, [profile, form]);
@@ -411,24 +419,20 @@ export default function ProfileEdit() {
 
   return (
     <DashboardLayout>
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold font-display">Éditer le profil</h1>
-          <p className="text-muted-foreground mt-1">Personnalisez l'apparence et le contenu de votre portfolio premium.</p>
-        </div>
-        <Button onClick={form.handleSubmit(onSubmit, onValidationError)} disabled={updateProfileMutation.isPending} data-testid="button-save-header">
-          {updateProfileMutation.isPending ? "Enregistrement..." : "Publier les changements"}
-        </Button>
-      </div>
 
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit, onValidationError)} className="space-y-8">
+      {/* ── Étape forcée : choix du domaine d'activité ── */}
+      {categoryLocked === false && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl bg-card border rounded-2xl shadow-2xl p-8">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold font-display mb-2">Votre domaine d'activité</h2>
+              <p className="text-muted-foreground text-sm">
+                Choisissez votre catégorie — cela adapte le formulaire à votre métier.<br />
+                <span className="font-medium text-foreground">Ce choix ne peut être fait qu'une seule fois.</span>
+              </p>
+            </div>
 
-          {/* Sélecteur de type de profil */}
-          <div className="bg-card border rounded-2xl p-6 shadow-sm">
-            <h2 className="text-base font-semibold mb-1">Votre domaine d'activité</h2>
-            <p className="text-sm text-muted-foreground mb-4">Choisissez votre catégorie pour adapter le formulaire à votre métier.</p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
               {PROFILE_CATEGORIES.map((cat) => {
                 const isSelected = watchProfileType === cat.id;
                 return (
@@ -438,8 +442,8 @@ export default function ProfileEdit() {
                     onClick={() => form.setValue("profileType", cat.id, { shouldDirty: true })}
                     className={`relative flex flex-col items-center gap-2 p-3 rounded-xl border-2 text-center transition-all duration-200 hover:scale-105 hover:shadow-md ${
                       isSelected
-                        ? "border-primary bg-primary/5 shadow-sm scale-105"
-                        : "border-border hover:border-primary/40"
+                        ? "border-primary bg-primary/10 shadow-md scale-105"
+                        : "border-border hover:border-primary/50 bg-background"
                     }`}
                   >
                     <span className="text-2xl">{cat.emoji}</span>
@@ -453,19 +457,62 @@ export default function ProfileEdit() {
                 );
               })}
             </div>
+
             {watchProfileType && (
-              <p className="text-xs text-muted-foreground mt-3 animate-in fade-in duration-300">
-                {currentCategory.emoji} <span className="font-medium">{currentCategory.label}</span> — {currentCategory.description}
-              </p>
+              <div className="mb-6 p-3 bg-primary/5 border border-primary/20 rounded-xl flex items-center gap-3 animate-in fade-in duration-200">
+                <span className="text-2xl">{currentCategory.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm">{currentCategory.label}</p>
+                  <p className="text-xs text-muted-foreground truncate">{currentCategory.description}</p>
+                </div>
+              </div>
             )}
+
+            <Button
+              type="button"
+              className="w-full"
+              size="lg"
+              disabled={!watchProfileType}
+              onClick={() => setCategoryLocked(true)}
+            >
+              {watchProfileType ? `Confirmer — ${currentCategory.label}` : "Sélectionnez un domaine pour continuer"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold font-display">Éditer le profil</h1>
+          <p className="text-muted-foreground mt-1">Personnalisez l'apparence et le contenu de votre portfolio premium.</p>
+        </div>
+        <Button onClick={form.handleSubmit(onSubmit, onValidationError)} disabled={updateProfileMutation.isPending} data-testid="button-save-header">
+          {updateProfileMutation.isPending ? "Enregistrement..." : "Publier les changements"}
+        </Button>
+      </div>
+
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit, onValidationError)} className="space-y-8">
+
+          {/* Domaine choisi — affiché en lecture seule */}
+          <div className="bg-card border rounded-2xl p-5 shadow-sm flex items-center gap-4">
+            <span className="text-3xl">{currentCategory.emoji}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium mb-0.5">Domaine d'activité</p>
+              <p className="font-semibold">{currentCategory.label}</p>
+              <p className="text-xs text-muted-foreground truncate">{currentCategory.description}</p>
+            </div>
+            <span className="w-6 h-6 bg-primary rounded-full flex items-center justify-center flex-shrink-0">
+              <Check className="w-3.5 h-3.5 text-white" />
+            </span>
           </div>
 
           <Tabs defaultValue="identity" className="w-full">
             <TabsList className="grid w-full grid-cols-2 md:w-auto md:inline-grid md:grid-cols-4 mb-6">
               <TabsTrigger value="identity">Identité</TabsTrigger>
+              <TabsTrigger value="appearance">Apparence</TabsTrigger>
               <TabsTrigger value="skills">Compétences & Services</TabsTrigger>
               <TabsTrigger value="contact">Contact & Réseaux</TabsTrigger>
-              <TabsTrigger value="appearance">Apparence</TabsTrigger>
             </TabsList>
             
             <div className="bg-card border rounded-2xl p-6 md:p-8 shadow-sm">
@@ -494,7 +541,7 @@ export default function ProfileEdit() {
                         <FormItem>
                           <FormLabel>Titre professionnel</FormLabel>
                           <FormControl>
-                            <Input placeholder="Développeur Web Freelance" {...field} data-testid="input-title" />
+                            <Input placeholder={currentCategory.titlePlaceholder} {...field} data-testid="input-title" />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -680,11 +727,11 @@ export default function ProfileEdit() {
                   name="skills"
                   render={() => (
                     <FormItem>
-                      <FormLabel>Compétences</FormLabel>
+                      <FormLabel>{currentCategory.skillsSectionLabel}</FormLabel>
                       <div className="space-y-4">
                         <div className="flex gap-2">
                           <Input 
-                            placeholder="Ajouter une compétence (ex: React) et appuyer sur Entrée" 
+                            placeholder={`Ajouter (ex: ${currentCategory.skillsPlaceholder.split(",")[0].trim()}) et appuyer sur Entrée`}
                             value={skillInput}
                             onChange={(e) => setSkillInput(e.target.value)}
                             onKeyDown={(e) => {
@@ -726,7 +773,7 @@ export default function ProfileEdit() {
                   name="services"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Services proposés</FormLabel>
+                      <FormLabel>{currentCategory.servicesLabel}</FormLabel>
                       <FormControl>
                         <Textarea placeholder="Décrivez en détail les services que vous offrez à vos clients..." className="h-48 resize-none" {...field} data-testid="input-services" />
                       </FormControl>

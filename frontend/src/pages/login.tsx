@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { Eye, EyeOff } from "lucide-react";
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Email invalide" }),
@@ -19,6 +21,7 @@ export default function Login() {
   const { login } = useAuth();
   const { toast } = useToast();
   const loginMutation = useLogin();
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -33,7 +36,8 @@ export default function Login() {
       onSuccess: (response) => {
         login(response.token, response.user);
         toast({ title: "Connexion réussie", description: "Bienvenue sur AfriFolio" });
-        setLocation("/dashboard");
+        const params = new URLSearchParams(window.location.search);
+        setLocation(params.get("redirect") || "/dashboard");
       },
       onError: () => {
         toast({ title: "Erreur de connexion", description: "Vérifiez vos identifiants", variant: "destructive" });
@@ -70,9 +74,17 @@ export default function Login() {
               name="password"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Mot de passe</FormLabel>
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Mot de passe</FormLabel>
+                    <Link href="/mot-de-passe-oublie" className="text-xs text-primary hover:underline">Mot de passe oublié ?</Link>
+                  </div>
                   <FormControl>
-                    <Input type="password" placeholder="••••••••" {...field} />
+                    <div className="relative">
+                      <Input type={showPassword ? "text" : "password"} placeholder="••••••••" {...field} className="pr-10" />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </FormControl>
                   <FormMessage />
                 </FormItem>

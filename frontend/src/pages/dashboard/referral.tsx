@@ -110,6 +110,22 @@ export default function Referral() {
         <p className="text-muted-foreground mt-1">Gagnez des commissions en invitant d'autres freelances.</p>
       </div>
 
+      {/* Bloc explication gains */}
+      <div className="bg-card border rounded-2xl p-5 mb-8 grid sm:grid-cols-3 gap-4 text-center">
+        <div className="p-3">
+          <p className="text-2xl font-black text-primary">36 FCFA</p>
+          <p className="text-xs text-muted-foreground mt-1">par ami abonné / mois</p>
+        </div>
+        <div className="p-3 border-x">
+          <p className="text-2xl font-black text-primary">360 FCFA</p>
+          <p className="text-xs text-muted-foreground mt-1">si 10 amis = 1 an gratuit</p>
+        </div>
+        <div className="p-3">
+          <p className="text-2xl font-black text-primary">Sans limite</p>
+          <p className="text-xs text-muted-foreground mt-1">de filleuls possibles</p>
+        </div>
+      </div>
+
       {stats && (
         <Card className="mb-8 border-primary/20 bg-primary/5">
           <CardHeader>
@@ -241,7 +257,11 @@ export default function Referral() {
                   </div>
                   <div className="text-right">
                     <div className="font-bold text-primary">+{comm.amount} FCFA</div>
-                    <div className="text-xs capitalize text-muted-foreground">{comm.status}</div>
+                    <div className={`text-xs capitalize ${
+                      comm.status === "paid" ? "text-emerald-600" : "text-amber-600"
+                    }`}>
+                      {comm.status === "paid" ? "✅ Payé" : "⏳ En attente"}
+                    </div>
                   </div>
                 </div>
               ))}
