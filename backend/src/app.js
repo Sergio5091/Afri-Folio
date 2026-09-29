@@ -16,8 +16,15 @@ const subscriptionRoutes = require("./routes/subscription");
 const adminRoutes = require("./routes/admin");
 const uploadRoutes = require("./routes/upload");
 const projectsRoutes = require("./routes/projects");
+const blocksRoutes = require("./routes/blocks");
+const leadsRoutes = require("./routes/leads");
+const accountRoutes = require("./routes/account");
+const { sharePage } = require("./controllers/portfolioController");
 
 const app = express();
+
+// Derrière un proxy (Nginx, Render, Railway...) : IP réelle du visiteur
+app.set("trust proxy", 1);
 const PORT = process.env.PORT || 3001;
 
 // ============================================================
@@ -42,14 +49,14 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Servir les fichiers uploadés statiquement
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use("/uploads", express.static(path.join(__dirname, "../uploads"), { maxAge: "30d", immutable: true }));
 
 // ============================================================
 // ROUTES
 // ============================================================
 
 app.get("/", (_req, res) => {
-  res.json({ message: "AfriFolio API", version: "1.0.0", status: "ok" });
+  res.json({ message: "AfriFolio API", version: "2.0.0", status: "ok" });
 });
 
 app.use("/api/auth", authRoutes);
@@ -62,6 +69,12 @@ app.use("/api/subscription", subscriptionRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/projects", projectsRoutes);
+app.use("/api/blocks", blocksRoutes);
+app.use("/api/leads", leadsRoutes);
+app.use("/api/account", accountRoutes);
+
+// Lien de partage avec aperçu (WhatsApp, Facebook...) → redirige vers le portfolio
+app.get("/share/:username", sharePage);
 
 // 404
 app.use((_req, res) => {

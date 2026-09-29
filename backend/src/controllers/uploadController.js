@@ -102,4 +102,17 @@ async function uploadLogo(req, res, next) {
   }
 }
 
-module.exports = { uploadAvatar, uploadLogo };
+// POST /api/upload/image — image de section (galerie, avant/après, menu...)
+async function uploadImage(req, res, next) {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "Aucun fichier reçu" });
+    }
+    return res.status(201).json({ url: getFileUrl(req, req.file.filename, "gallery") });
+  } catch (err) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    next(err);
+  }
+}
+
+module.exports = { uploadAvatar, uploadLogo, uploadImage };

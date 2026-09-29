@@ -1,48 +1,67 @@
 const pool = require("../config/db");
+const { formatProfile } = require("../utils/format");
+const { TEMPLATES } = require("../config/constants");
 
-/**
- * Convertit les colonnes snake_case DB → camelCase pour le frontend
- */
-function formatProfile(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    userId: row.user_id,
-    profileType: row.profile_type,
-    fullName: row.full_name,
-    title: row.title,
-    tagline: row.tagline,
-    bio: row.bio,
-    photoUrl: row.photo_url,
-    logoUrl: row.logo_url,
-    skills: row.skills ? (typeof row.skills === "string" ? JSON.parse(row.skills) : row.skills) : [],
-    services: row.services,
-    whatsapp: row.whatsapp,
-    emailContact: row.email_contact,
-    linkedin: row.linkedin,
-    twitter: row.twitter,
-    github: row.github,
-    website: row.website,
-    country: row.country,
-    city: row.city,
-    styleTheme: row.style_theme,
-    primaryColor: row.primary_color,
-    fontFamily: row.font_family,
-    yearsExperience: row.years_experience,
-    completedProjects: row.completed_projects,
-    satisfiedClients: row.satisfied_clients,
-    availableForWork: Boolean(row.available_for_work),
-    updatedAt: row.updated_at,
-  };
+// Champs modifiables : clé API → [colonne DB, type, longueur max]
+const FIELDS = {
+  profileType: ["profile_type", "string", 50],
+  profession: ["profession", "string", 60],
+  professionCustom: ["profession_custom", "string", 120],
+  template: ["template", "template"],
+  fullName: ["full_name", "string", 100],
+  title: ["title", "string", 150],
+  tagline: ["tagline", "string", 255],
+  bio: ["bio", "string", 5000],
+  photoUrl: ["photo_url", "string", 500],
+  logoUrl: ["logo_url", "string", 500],
+  skills: ["skills", "json"],
+  services: ["services", "string", 5000],
+  whatsapp: ["whatsapp", "string", 30],
+  emailContact: ["email_contact", "string", 255],
+  linkedin: ["linkedin", "string", 500],
+  twitter: ["twitter", "string", 500],
+  github: ["github", "string", 500],
+  website: ["website", "string", 500],
+  country: ["country", "string", 100],
+  city: ["city", "string", 100],
+  styleTheme: ["style_theme", "string", 30],
+  primaryColor: ["primary_color", "color"],
+  fontFamily: ["font_family", "string", 100],
+  yearsExperience: ["years_experience", "int"],
+  completedProjects: ["completed_projects", "int"],
+  satisfiedClients: ["satisfied_clients", "int"],
+  availableForWork: ["available_for_work", "bool"],
+  listedInDirectory: ["listed_in_directory", "bool"],
+};
+
+function coerce(value, type, max) {
+  if (value === undefined) return undefined;
+  switch (type) {
+    case "string":
+      if (value == null) return null;
+      return String(value).trim().slice(0, max) || null;
+    case "int": {
+      if (value === null || value === "") return null;
+      const n = parseInt(value, 10);
+      return Number.isFinite(n) && n >= 0 ? Math.min(n, 1_000_000) : null;
+    }
+    case "bool":
+      return value ? 1 : 0;
+    case "json":
+      return JSON.stringify(Array.isArray(value) ? value.map(String).slice(0, 50) : []);
+    case "color":
+      return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : null;
+    case "template":
+      return TEMPLATES.includes(value) ? value : null;
+    default:
+      return undefined;
+  }
 }
 
 // GET /api/profile
 async function getProfile(req, res, next) {
   try {
-    const [rows] = await pool.query(
-      "SELECT * FROM profiles WHERE user_id = ?",
-      [req.user.id]
-    );
+    const [rows] = await pool.query("SELECT * FROM profiles WHERE user_id = ?", [req.user.id]);
 
     if (rows.length === 0) {
       return res.status(404).json({ message: "Profil introuvable" });
@@ -54,121 +73,33 @@ async function getProfile(req, res, next) {
   }
 }
 
-// PUT /api/profile
+// PUT /api/profile — mise à jour partielle : seuls les champs envoyés sont modifiés
 async function updateProfile(req, res, next) {
   try {
-    const {
-      profileType,
-      fullName,
-      title,
-      tagline,
-      bio,
-      photoUrl,
-      logoUrl,
-      skills,
-      services,
-      whatsapp,
-      emailContact,
-      linkedin,
-      twitter,
-      github,
-      website,
-      country,
-      city,
-      styleTheme,
-      primaryColor,
-      fontFamily,
-      yearsExperience,
-      completedProjects,
-      satisfiedClients,
-      availableForWork,
-    } = req.body;
+    const body = req.body || {};
 
-    // Validation minimale
-    if (!fullName || fullName.length < 2) {
+    if (body.fullName !== undefined && String(body.fullName || "").trim().length < 2) {
       return res.status(400).json({ message: "Le nom est requis (min 2 caractères)" });
     }
-    if (!title || title.length < 2) {
-      return res.status(400).json({ message: "Le titre est requis (min 2 caractères)" });
-    }
-    if (!bio || bio.length < 10) {
-      return res.status(400).json({ message: "Une courte bio est requise (min 10 caractères)" });
-    }
-    if (!emailContact) {
-      return res.status(400).json({ message: "L'email de contact est requis" });
-    }
-    // services est optionnel à la sauvegarde (peut être rempli plus tard)
-    if (services && services.trim().length > 0 && services.trim().length < 5) {
-      return res.status(400).json({ message: "Décrivez vos services (min 5 caractères)" });
+    if (body.emailContact && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.emailContact)) {
+      return res.status(400).json({ message: "Email de contact invalide" });
     }
 
-    const validThemes = ["minimalist", "modern", "classic", "bold", "elegant", "sidebar", "card", "timeline", "magazine", "neon"];
-    const theme = validThemes.includes(styleTheme) ? styleTheme : "modern";
+    const sets = [];
+    const values = [];
+    for (const [key, [column, type, max]] of Object.entries(FIELDS)) {
+      if (!(key in body)) continue;
+      const value = coerce(body[key], type, max);
+      if (value === undefined) continue;
+      sets.push(`${column} = ?`);
+      values.push(value);
+    }
 
-    const skillsJson = JSON.stringify(Array.isArray(skills) ? skills : []);
+    if (sets.length > 0) {
+      await pool.query(`UPDATE profiles SET ${sets.join(", ")} WHERE user_id = ?`, [...values, req.user.id]);
+    }
 
-    await pool.query(
-      `UPDATE profiles SET
-        profile_type = ?,
-        full_name = ?,
-        title = ?,
-        tagline = ?,
-        bio = ?,
-        photo_url = ?,
-        logo_url = ?,
-        skills = ?,
-        services = ?,
-        whatsapp = ?,
-        email_contact = ?,
-        linkedin = ?,
-        twitter = ?,
-        github = ?,
-        website = ?,
-        country = ?,
-        city = ?,
-        style_theme = ?,
-        primary_color = ?,
-        font_family = ?,
-        years_experience = ?,
-        completed_projects = ?,
-        satisfied_clients = ?,
-        available_for_work = ?
-      WHERE user_id = ?`,
-      [
-        profileType || null,
-        fullName || null,
-        title || null,
-        tagline || null,
-        bio || null,
-        photoUrl || null,
-        logoUrl || null,
-        skillsJson,
-        services || null,
-        whatsapp || null,
-        emailContact || null,
-        linkedin || null,
-        twitter || null,
-        github || null,
-        website || null,
-        country || null,
-        city || null,
-        theme,
-        primaryColor || "#4f46e5",
-        fontFamily || "Inter",
-        yearsExperience != null ? parseInt(yearsExperience) : null,
-        completedProjects != null ? parseInt(completedProjects) : null,
-        satisfiedClients != null ? parseInt(satisfiedClients) : null,
-        availableForWork ? 1 : 0,
-        req.user.id,
-      ]
-    );
-
-    // Retourner le profil mis à jour
-    const [rows] = await pool.query(
-      "SELECT * FROM profiles WHERE user_id = ?",
-      [req.user.id]
-    );
-
+    const [rows] = await pool.query("SELECT * FROM profiles WHERE user_id = ?", [req.user.id]);
     return res.json(formatProfile(rows[0]));
   } catch (err) {
     next(err);

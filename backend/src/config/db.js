@@ -13,6 +13,12 @@ const pool = mysql.createPool({
   timezone: "+00:00",
 });
 
+// Les dates sont stockées et lues en UTC : NOW() doit aussi être en UTC
+// (sinon décalage entre les dates écrites par MySQL et celles écrites par Node)
+pool.on("connection", (conn) => {
+  conn.query("SET time_zone = '+00:00'");
+});
+
 // Test connection on startup
 pool.getConnection()
   .then((conn) => {

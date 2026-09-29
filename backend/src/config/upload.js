@@ -9,7 +9,7 @@ if (!fs.existsSync(UPLOADS_DIR)) {
 }
 
 // Sous-dossiers par type
-const SUBDIRS = ["avatars", "logos", "projects"];
+const SUBDIRS = ["avatars", "logos", "projects", "gallery"];
 SUBDIRS.forEach((dir) => {
   const fullPath = path.join(UPLOADS_DIR, dir);
   if (!fs.existsSync(fullPath)) {
@@ -67,4 +67,12 @@ const uploadProjectImg = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-module.exports = { uploadAvatar, uploadLogo, uploadProjectImg, UPLOADS_DIR };
+// Upload image de galerie (sections du portfolio) — max 8MB
+// Le frontend compresse déjà les photos avant envoi (~300 Ko)
+const uploadGalleryImg = multer({
+  storage: createStorage("gallery"),
+  fileFilter: imageFilter,
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
+
+module.exports = { uploadAvatar, uploadLogo, uploadProjectImg, uploadGalleryImg, UPLOADS_DIR };

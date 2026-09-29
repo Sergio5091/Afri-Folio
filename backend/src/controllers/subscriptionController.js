@@ -1,150 +1,139 @@
 const pool = require("../config/db");
+const {
+  SUBSCRIPTION_PRICE,
+  SUBSCRIPTION_PRICE_YEARLY,
+  COMMISSION_RATE,
+  FREE_PLAN_LIMITS,
+} = require("../config/constants");
 
-const SUBSCRIPTION_PRICE = parseInt(process.env.SUBSCRIPTION_PRICE || "360");
-const COMMISSION_RATE = parseFloat(process.env.COMMISSION_RATE || "0.10");
+const PERIODS = {
+  monthly: { price: SUBSCRIPTION_PRICE, months: 1 },
+  yearly: { price: SUBSCRIPTION_PRICE_YEARLY, months: 12 },
+};
 
 /**
- * POST /api/subscription/initiate
+ * GET /api/subscription/plans (public)
+ * Source unique des prix : la page d'accueil et le dashboard lisent ceci.
+ */
+function getPlans(_req, res) {
+  return res.json({
+    currency: "FCFA",
+    monthly: PERIODS.monthly.price,
+    yearly: PERIODS.yearly.price,
+    commissionRate: COMMISSION_RATE,
+    freeLimits: FREE_PLAN_LIMITS,
+  });
+}
+
+/**
+ * Active un abonnement payé : prolonge depuis l'expiration en cours si elle
+ * est dans le futur, passe le compte en premium et crédite le parrain.
+ */
+async function activateSubscription(subscriptionId, externalRef = null) {
+  const [subs] = await pool.query("SELECT * FROM subscriptions WHERE id = ?", [subscriptionId]);
+  const sub = subs[0];
+  if (!sub) return null;
+  if (sub.status === "success") return sub;
+
+  const [current] = await pool.query(
+    `SELECT MAX(expires_at) AS expiresAt FROM subscriptions WHERE user_id = ? AND status = 'success'`,
+    [sub.user_id]
+  );
+  const base =
+    current[0]?.expiresAt && new Date(current[0].expiresAt) > new Date() ? new Date(current[0].expiresAt) : new Date();
+  base.setMonth(base.getMonth() + (PERIODS[sub.period]?.months || 1));
+
+  await pool.query("UPDATE subscriptions SET status = 'success', external_ref = ?, expires_at = ? WHERE id = ?", [
+    externalRef,
+    base,
+    subscriptionId,
+  ]);
+  await pool.query("UPDATE users SET plan = 'premium' WHERE id = ?", [sub.user_id]);
+
+  // Commission du parrain : un pourcentage de chaque paiement
+  const [userRows] = await pool.query("SELECT referred_by FROM users WHERE id = ?", [sub.user_id]);
+  const referrerId = userRows[0]?.referred_by;
+  if (referrerId) {
+    const month = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+    await pool.query(
+      `INSERT IGNORE INTO commissions (referrer_id, referee_id, amount, month, status)
+       VALUES (?, ?, ?, ?, 'paid')`,
+      [referrerId, sub.user_id, Math.floor(sub.amount * COMMISSION_RATE), month]
+    );
+  }
+
+  return { ...sub, status: "success", expires_at: base };
+}
+
+/**
+ * POST /api/subscription/initiate  { operator, phoneNumber, period }
  * Initie un paiement Mobile Money
  *
- * NOTE: Cette implémentation est un stub prêt à être connecté
- * à un vrai provider (CinetPay, FedaPay, etc.)
- * Pour l'instant, elle simule un paiement en attente.
+ * NOTE: stub prêt à être connecté à un vrai provider (FedaPay, CinetPay, KkiaPay...)
  */
 async function initiatePayment(req, res, next) {
   try {
     const userId = req.user.id;
-    const { operator, phoneNumber } = req.body;
+    const { operator, phoneNumber } = req.body || {};
+    const period = PERIODS[req.body?.period] ? req.body.period : "monthly";
 
-    const validOperators = ["mtn", "moov", "wave"];
-    if (!operator || !validOperators.includes(operator)) {
+    if (!["mtn", "moov", "wave"].includes(operator)) {
       return res.status(400).json({ message: "Opérateur invalide (mtn, moov, wave)" });
     }
-
-    if (!phoneNumber || phoneNumber.trim().length < 8) {
+    if (!phoneNumber || String(phoneNumber).replace(/\D/g, "").length < 8) {
       return res.status(400).json({ message: "Numéro de téléphone invalide" });
     }
 
-    // Vérifier si l'utilisateur a déjà un abonnement actif
-    const [activeSub] = await pool.query(
-      `SELECT id FROM subscriptions
-       WHERE user_id = ? AND status = 'success' AND expires_at > NOW()`,
-      [userId]
-    );
-
-    if (activeSub.length > 0) {
-      return res.status(409).json({ message: "Vous avez déjà un abonnement actif" });
-    }
-
-    // Créer l'entrée de paiement en attente
     const [result] = await pool.query(
-      `INSERT INTO subscriptions (user_id, operator, phone_number, amount, status)
-       VALUES (?, ?, ?, ?, 'pending')`,
-      [userId, operator, phoneNumber.trim(), SUBSCRIPTION_PRICE]
+      `INSERT INTO subscriptions (user_id, operator, phone_number, amount, status, period)
+       VALUES (?, ?, ?, ?, 'pending', ?)`,
+      [userId, operator, String(phoneNumber).trim(), PERIODS[period].price, period]
     );
-
-    const subscriptionId = result.insertId;
 
     // ============================================================
-    // TODO: Intégrer ici l'API du provider de paiement
-    // Exemple avec CinetPay ou FedaPay :
-    //
-    // const paymentResponse = await paymentService.initiate({
-    //   amount: SUBSCRIPTION_PRICE,
-    //   currency: 'XOF',
-    //   phoneNumber,
-    //   operator,
-    //   transactionId: subscriptionId.toString(),
+    // TODO: Intégrer ici l'API du provider de paiement, par ex. :
+    // const payment = await paymentService.initiate({
+    //   amount: PERIODS[period].price, currency: 'XOF', phoneNumber, operator,
+    //   transactionId: String(result.insertId),
     //   callbackUrl: `${process.env.APP_URL}/api/subscription/webhook`,
     // });
-    //
-    // return res.json({ paymentUrl: paymentResponse.paymentUrl });
+    // return res.json({ subscriptionId: result.insertId, paymentUrl: payment.url, message: '...' });
     // ============================================================
 
-    // Simulation : retourner un message de confirmation
     return res.json({
-      subscriptionId,
-      message: `Paiement de ${SUBSCRIPTION_PRICE} FCFA initié via ${operator.toUpperCase()}. Validez sur votre téléphone.`,
-      paymentUrl: null, // Sera rempli avec le vrai provider
+      subscriptionId: result.insertId,
+      message: `Paiement de ${PERIODS[period].price} FCFA initié via ${operator.toUpperCase()}. Validez sur votre téléphone.`,
+      paymentUrl: null,
     });
   } catch (err) {
     next(err);
   }
 }
+
 /**
  * POST /api/subscription/webhook
  * Callback du provider de paiement (route publique)
- * Appelé automatiquement par le provider après paiement
  */
 async function handleWebhook(req, res, next) {
   try {
     // ============================================================
     // TODO: Valider la signature du webhook selon le provider
-    // const signature = req.headers['x-webhook-signature'];
-    // if (!validateSignature(req.body, signature)) {
+    // if (!validateSignature(req.body, req.headers['x-webhook-signature'])) {
     //   return res.status(401).json({ message: 'Signature invalide' });
     // }
     // ============================================================
-
-    const { subscriptionId, status, externalRef } = req.body;
-
+    const { subscriptionId, status, externalRef } = req.body || {};
     if (!subscriptionId || !status) {
       return res.status(400).json({ message: "Données webhook invalides" });
     }
 
-    // Récupérer l'abonnement
-    const [subs] = await pool.query(
-      "SELECT * FROM subscriptions WHERE id = ?",
-      [subscriptionId]
-    );
-
-    if (subs.length === 0) {
-      return res.status(404).json({ message: "Abonnement introuvable" });
-    }
-
-    const sub = subs[0];
-
     if (status === "success") {
-      // Calculer la date d'expiration (1 mois)
-      const expiresAt = new Date();
-      expiresAt.setMonth(expiresAt.getMonth() + 1);
-
-      // Mettre à jour l'abonnement
-      await pool.query(
-        `UPDATE subscriptions SET status = 'success', external_ref = ?, expires_at = ?
-         WHERE id = ?`,
-        [externalRef || null, expiresAt, subscriptionId]
-      );
-
-      // Passer l'utilisateur en premium
-      await pool.query(
-        "UPDATE users SET plan = 'premium' WHERE id = ?",
-        [sub.user_id]
-      );
-
-      // Créer la commission pour le parrain (si l'utilisateur a été parrainé)
-      const [userRows] = await pool.query(
-        "SELECT referred_by FROM users WHERE id = ?",
-        [sub.user_id]
-      );
-
-      if (userRows[0]?.referred_by) {
-        const referrerId = userRows[0].referred_by;
-        const commissionAmount = Math.floor(SUBSCRIPTION_PRICE * COMMISSION_RATE);
-        const month = new Date().toISOString().slice(0, 7); // "YYYY-MM"
-
-        // Insérer la commission (ignore si déjà existante pour ce mois)
-        await pool.query(
-          `INSERT IGNORE INTO commissions (referrer_id, referee_id, amount, month, status)
-           VALUES (?, ?, ?, ?, 'paid')`,
-          [referrerId, sub.user_id, commissionAmount, month]
-        );
-      }
+      const sub = await activateSubscription(subscriptionId, externalRef || null);
+      if (!sub) return res.status(404).json({ message: "Abonnement introuvable" });
     } else if (status === "failed") {
-      await pool.query(
-        "UPDATE subscriptions SET status = 'failed' WHERE id = ?",
-        [subscriptionId]
-      );
+      await pool.query("UPDATE subscriptions SET status = 'failed' WHERE id = ? AND status = 'pending'", [
+        subscriptionId,
+      ]);
     }
 
     return res.json({ message: "Webhook traité" });
@@ -153,65 +142,53 @@ async function handleWebhook(req, res, next) {
   }
 }
 
-module.exports = { initiatePayment, handleWebhook };
-
-// ============================================================
-// MODE DEV UNIQUEMENT — Simulation de paiement
-// ============================================================
-
 /**
- * POST /api/subscription/simulate-payment
- * Passe l'utilisateur connecté en premium instantanément.
- * DÉSACTIVÉ en production.
+ * GET /api/subscription/history
  */
-async function simulatePayment(req, res, next) {
-  if (process.env.NODE_ENV === "production") {
-    return res.status(403).json({ message: "Non disponible en production" });
-  }
-
+async function getHistory(req, res, next) {
   try {
-    const userId = req.user.id;
-
-    // Calculer la date d'expiration (1 mois)
-    const expiresAt = new Date();
-    expiresAt.setMonth(expiresAt.getMonth() + 1);
-
-    // Créer un abonnement success
-    await pool.query(
-      `INSERT INTO subscriptions (user_id, operator, phone_number, amount, status, expires_at)
-       VALUES (?, 'mtn', '00000000', ?, 'success', ?)`,
-      [userId, SUBSCRIPTION_PRICE, expiresAt]
+    const [rows] = await pool.query(
+      `SELECT id, operator, amount, status, period, granted_by_admin, expires_at, created_at
+       FROM subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50`,
+      [req.user.id]
     );
-
-    // Passer en premium
-    await pool.query("UPDATE users SET plan = 'premium' WHERE id = ?", [userId]);
-
-    // Créer la commission pour le parrain si applicable
-    const [userRows] = await pool.query(
-      "SELECT referred_by FROM users WHERE id = ?",
-      [userId]
+    return res.json(
+      rows.map((r) => ({
+        id: r.id,
+        operator: r.operator,
+        amount: r.amount,
+        status: r.status,
+        period: r.period,
+        grantedByAdmin: Boolean(r.granted_by_admin),
+        expiresAt: r.expires_at,
+        createdAt: r.created_at,
+      }))
     );
-
-    if (userRows[0]?.referred_by) {
-      const referrerId = userRows[0].referred_by;
-      const commissionAmount = Math.floor(SUBSCRIPTION_PRICE * COMMISSION_RATE);
-      const month = new Date().toISOString().slice(0, 7);
-
-      await pool.query(
-        `INSERT IGNORE INTO commissions (referrer_id, referee_id, amount, month, status)
-         VALUES (?, ?, ?, ?, 'paid')`,
-        [referrerId, userId, commissionAmount, month]
-      );
-    }
-
-    return res.json({
-      message: "✅ Paiement simulé — compte passé en Premium",
-      plan: "premium",
-      expiresAt,
-    });
   } catch (err) {
     next(err);
   }
 }
 
-module.exports = { initiatePayment, handleWebhook, simulatePayment };
+/**
+ * POST /api/subscription/simulate-payment  { period }
+ * MODE DEV UNIQUEMENT — passe le compte en premium sans provider.
+ */
+async function simulatePayment(req, res, next) {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(403).json({ message: "Non disponible en production" });
+  }
+  try {
+    const period = PERIODS[req.body?.period] ? req.body.period : "monthly";
+    const [result] = await pool.query(
+      `INSERT INTO subscriptions (user_id, operator, phone_number, amount, status, period)
+       VALUES (?, 'mtn', '00000000', ?, 'pending', ?)`,
+      [req.user.id, PERIODS[period].price, period]
+    );
+    const sub = await activateSubscription(result.insertId, "SIMULATION");
+    return res.json({ message: "✅ Paiement simulé — compte passé en Pro", plan: "premium", expiresAt: sub.expires_at });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { getPlans, initiatePayment, handleWebhook, getHistory, simulatePayment, activateSubscription };

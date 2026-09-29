@@ -14,6 +14,7 @@ import type {
   AdminStats,
   AdminUsersResponse,
   InitiatePaymentRequest,
+  Project,
   InitiatePaymentResponse,
   WithdrawalRequest,
 } from "./types";

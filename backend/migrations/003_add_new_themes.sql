@@ -1,7 +1,6 @@
 USE afrifolio;
 
--- Étendre l'ENUM style_theme avec les nouveaux templates
+-- Le thème est désormais une chaîne libre (validée côté API) :
+-- évite de modifier l'ENUM à chaque nouveau template.
 ALTER TABLE profiles
-  MODIFY COLUMN style_theme 
-  ENUM('minimalist','modern','classic','bold','elegant','sidebar','card','timeline','magazine','neon')
-  NOT NULL DEFAULT 'modern';
+  MODIFY COLUMN style_theme VARCHAR(30) NOT NULL DEFAULT 'modern';
