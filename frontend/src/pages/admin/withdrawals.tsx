@@ -2,7 +2,7 @@ import { useGetAdminWithdrawals, useUpdateWithdrawal, getGetAdminWithdrawalsQuer
 import { AdminLayout } from "@/components/admin-layout";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, X, Clock, Wallet, Loader2 } from "lucide-react";
+import { Check, X, Wallet, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 const STATUS_LABELS: Record<string, { label: string; class: string }> = {

@@ -9,7 +9,10 @@ const toDateKey = (d) => new Date(d).toISOString().split("T")[0];
 async function getAnalyticsStats(req, res, next) {
   try {
     const username = req.user.username;
-    const days = [7, 14, 30, 90].includes(parseInt(req.query.days)) ? parseInt(req.query.days) : 30;
+    const isPro = req.user.plan === "premium";
+    // Plan gratuit : 7 derniers jours ; provenance et pays réservés au Pro
+    const wanted = [7, 14, 30, 90].includes(parseInt(req.query.days)) ? parseInt(req.query.days) : 30;
+    const days = isPro ? wanted : 7;
 
     const [[totals]] = await pool.query(
       `SELECT
@@ -77,8 +80,9 @@ async function getAnalyticsStats(req, res, next) {
       viewsThisMonth: Number(totals.viewsThisMonth) || 0,
       viewsInRange: Number(totals.viewsInRange) || 0,
       viewsByDay,
-      viewsByCountry: byCountry.map((r) => ({ country: r.country, count: Number(r.count) })),
-      viewsBySource: bySource.map((r) => ({ source: r.source, count: Number(r.count) })),
+      locked: !isPro,
+      viewsByCountry: (isPro ? byCountry : []).map((r) => ({ country: r.country, count: Number(r.count) })),
+      viewsBySource: (isPro ? bySource : []).map((r) => ({ source: r.source, count: Number(r.count) })),
       events: {
         whatsapp: eventCounts.whatsapp || 0,
         call: eventCounts.call || 0,

@@ -1,217 +1,205 @@
-import { useAuth } from "@/contexts/auth";
-import { DashboardLayout } from "@/components/dashboard-layout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { useInitiatePayment } from "@workspace/api-client-react";
-import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ShieldCheck, Check, FlaskConical } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { BadgeCheck, BarChart3, Check, Images, Loader2, Palette, Smartphone, Sparkles, Zap } from "lucide-react";
+import {
+  getGetDashboardSummaryQueryKey, getGetSubscriptionHistoryQueryKey, useGetDashboardSummary, useGetPlans, useGetSubscriptionHistory,
+  useInitiatePayment, useSimulatePayment,
+} from "@workspace/api-client-react";
+import { DashboardLayout } from "@/components/dashboard-layout";
+import { FormField, PageHeader, Panel, fieldCls } from "@/components/dashboard/ui";
+import { useAuth } from "@/contexts/auth";
+import { useToast } from "@/hooks/use-toast";
+import { formatNumber } from "@/lib/utils";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3001";
-const IS_DEV = import.meta.env.DEV;
+const OPERATORS = [
+  { id: "mtn", name: "MTN MoMo", color: "#FFCC00", text: "#000" },
+  { id: "moov", name: "Moov Money", color: "#0055A5", text: "#fff" },
+  { id: "wave", name: "Wave", color: "#1DC8FF", text: "#003" },
+] as const;
+
+const PRO_FEATURES = [
+  { icon: Images, title: "Photos illimitées", desc: "Montrez tout votre travail, sans limite." },
+  { icon: BarChart3, title: "Statistiques complètes", desc: "30 et 90 jours, provenance des visiteurs, pays." },
+  { icon: BadgeCheck, title: "Badge Pro vérifié", desc: "Plus de confiance, mis en avant dans l'annuaire." },
+  { icon: Palette, title: "Couleur de votre marque", desc: "Une couleur sur mesure pour votre page." },
+  { icon: Sparkles, title: "Sans mention AfriFolio", desc: "Votre page, 100 % à votre nom." },
+  { icon: Zap, title: "Support prioritaire", desc: "Une réponse rapide sur WhatsApp." },
+];
 
 export default function Subscription() {
-  const { user, login, token } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
-  const paymentMutation = useInitiatePayment();
-  const [simulating, setSimulating] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: plans } = useGetPlans();
+  const { data: summary } = useGetDashboardSummary();
+  const { data: history } = useGetSubscriptionHistory();
+  const [period, setPeriod] = useState<"monthly" | "yearly">("yearly");
   const [operator, setOperator] = useState<"mtn" | "moov" | "wave">("mtn");
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [phone, setPhone] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
 
-  const handlePayment = () => {
-    if (!phoneNumber) {
-      toast({ title: "Numéro requis", description: "Veuillez entrer votre numéro de téléphone.", variant: "destructive" });
-      return;
-    }
-    paymentMutation.mutate({ data: { operator, phoneNumber } }, {
-      onSuccess: (response) => {
-        if (response.paymentUrl) {
-          window.location.href = response.paymentUrl;
-        } else {
-          toast({ title: "Paiement initié", description: "Veuillez valider le paiement sur votre téléphone." });
-        }
-      },
-      onError: () => {
-        toast({ title: "Erreur", description: "Impossible d'initier le paiement.", variant: "destructive" });
-      }
-    });
+  const isPro = user?.plan === "premium";
+  const price = plans ? (period === "yearly" ? plans.yearly : plans.monthly) : null;
+  const monthlyEquivalent = plans ? Math.round(plans.yearly / 12) : null;
+  const saving = plans ? plans.monthly * 12 - plans.yearly : 0;
+
+  const afterPayment = async () => {
+    await refreshUser();
+    queryClient.invalidateQueries({ queryKey: getGetDashboardSummaryQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetSubscriptionHistoryQueryKey() });
   };
 
-  // DEV ONLY — simule un paiement réussi sans provider
-  const handleSimulatePayment = async () => {
-    setSimulating(true);
-    try {
-      const res = await fetch(`${API_BASE}/api/subscription/simulate-payment`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("portfolio_token")}`,
-        },
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message);
+  const pay = useInitiatePayment({
+    onSuccess: (res) => {
+      if (res.paymentUrl) window.location.href = res.paymentUrl;
+      else setPending(res.message);
+      queryClient.invalidateQueries({ queryKey: getGetSubscriptionHistoryQueryKey() });
+    },
+    onError: (e: any) => toast({ title: "Paiement impossible", description: e?.message, variant: "destructive" }),
+  });
+  const simulate = useSimulatePayment({
+    onSuccess: async (res) => {
+      await afterPayment();
+      toast({ title: res.message });
+    },
+    onError: (e: any) => toast({ title: "Erreur", description: e?.message, variant: "destructive" }),
+  });
 
-      if (user && token) {
-        login(token, { ...user, plan: "premium" });
-      }
-
-      toast({
-        title: "✅ Paiement simulé",
-        description: "Votre compte est maintenant Premium. Rechargez la page.",
-      });
-
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (err: any) {
-      toast({ title: "Erreur", description: err.message, variant: "destructive" });
-    } finally {
-      setSimulating(false);
-    }
-  };
+  const expires = summary?.subscriptionExpiresAt ? new Date(summary.subscriptionExpiresAt) : null;
 
   return (
     <DashboardLayout>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold font-display">Abonnement</h1>
-        <p className="text-muted-foreground mt-1">Gérez votre plan et vos options de facturation.</p>
-      </div>
+      <PageHeader title="Abonnement" description="Paiement simple par Mobile Money. Sans carte bancaire, sans engagement." />
 
-      {/* Bannière DEV uniquement */}
-      {IS_DEV && user?.plan !== "premium" && (
-        <div className="mb-6 p-4 rounded-xl border border-dashed border-amber-400 bg-amber-50 dark:bg-amber-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      {isPro && (
+        <section className="mb-6 flex flex-col gap-4 rounded-2xl bg-gradient-to-r from-amber-500 to-primary p-6 text-white sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <FlaskConical className="w-5 h-5 text-amber-600 shrink-0" />
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20"><Sparkles className="h-6 w-6" /></span>
             <div>
-              <p className="font-semibold text-amber-800 dark:text-amber-400 text-sm">Mode développement</p>
-              <p className="text-xs text-amber-700 dark:text-amber-500">Simulez un paiement réussi sans provider Mobile Money.</p>
+              <p className="text-lg font-bold">Vous êtes Pro</p>
+              <p className="text-sm text-white/85">{expires ? `Actif jusqu'au ${expires.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}` : "Actif"}</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="border-amber-400 text-amber-700 hover:bg-amber-100 gap-2 shrink-0"
-            onClick={handleSimulatePayment}
-            disabled={simulating}
-          >
-            <FlaskConical className="w-4 h-4" />
-            {simulating ? "Simulation..." : "Simuler le paiement"}
-          </Button>
-        </div>
+          <p className="text-sm text-white/85">Vous pouvez prolonger dès maintenant : la durée s'ajoute à la date actuelle.</p>
+        </section>
       )}
 
-      {/* Plan Premium actif */}
-      {user?.plan === "premium" && (
-        <div className="grid md:grid-cols-2 gap-8 items-start">
-          <Card className="border-emerald-500/30 bg-emerald-500/5">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-emerald-600">
-                <ShieldCheck className="w-5 h-5" /> Plan Pro actif
-              </CardTitle>
-              <CardDescription>Vous bénéficiez de toutes les fonctionnalités premium.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <ul className="space-y-3">
-                {["Projets illimités", "Thèmes premium", "Analytiques avancées", "Gains de parrainage"].map((feat, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm">
-                    <div className="bg-emerald-500/10 text-emerald-600 rounded-full p-1"><Check className="w-3 h-3" /></div>
-                    {feat}
-                  </li>
-                ))}
-              </ul>
-              <div className="pt-4 border-t">
-                <p className="text-xs text-muted-foreground">Renouvellement mensuel automatique</p>
-                <p className="font-bold text-sm mt-1">360 FCFA / mois via Mobile Money</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Renouveler l'abonnement</CardTitle>
-              <CardDescription>Payez le mois suivant via Mobile Money</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Opérateur</Label>
-                <Select value={operator} onValueChange={(v: any) => setOperator(v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mtn">MTN Mobile Money</SelectItem>
-                    <SelectItem value="moov">Moov Money</SelectItem>
-                    <SelectItem value="wave">Wave</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Numéro de téléphone</Label>
-                <Input placeholder="Ex: +229..." value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
-              </div>
-              <Button className="w-full" onClick={handlePayment} disabled={paymentMutation.isPending}>
-                {paymentMutation.isPending ? "Initiation..." : "Payer 360 FCFA"}
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <Panel title="AfriFolio Pro" description="Tout ce qu'il faut pour être pris au sérieux et trouver plus de clients.">
+          <ul className="grid gap-4 sm:grid-cols-2">
+            {PRO_FEATURES.map((f) => (
+              <li key={f.title} className="flex gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><f.icon className="h-4 w-4" /></span>
+                <span>
+                  <span className="block text-sm font-semibold">{f.title}</span>
+                  <span className="block text-sm text-muted-foreground">{f.desc}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-6 rounded-xl bg-muted/60 p-4 text-sm">
+            <p className="font-semibold">Plan gratuit</p>
+            <p className="mt-1 text-muted-foreground">
+              Page complète, tous les styles, contact WhatsApp et messages, jusqu'à {plans?.freeLimits.photos ?? 12} photos, statistiques sur 7 jours.
+            </p>
+          </div>
+        </Panel>
 
-      {/* Plan Free — formulaire de passage Pro */}
-      {user?.plan !== "premium" && (
-        <div className="grid md:grid-cols-2 gap-8 items-start">
-          <Card className="border-primary">
-            <CardHeader>
-              <CardTitle>Passez au plan Pro</CardTitle>
-              <CardDescription>Débloquez toutes les fonctionnalités pour 360 FCFA/mois.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <div className="text-3xl font-bold font-display text-primary">
-                  360 FCFA <span className="text-sm font-normal text-muted-foreground">/ mois</span>
-                </div>
-                <ul className="space-y-3">
-                  {["Projets illimités", "Thèmes premium", "Analytiques avancées", "Gains de parrainage"].map((feat, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm">
-                      <div className="bg-primary/10 text-primary rounded-full p-1"><Check className="w-3 h-3" /></div>
-                      {feat}
-                    </li>
+        <Panel title={isPro ? "Prolonger mon abonnement" : "Passer Pro"}>
+          <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted p-1">
+            {(["monthly", "yearly"] as const).map((p) => (
+              <button key={p} onClick={() => setPeriod(p)} className={`relative rounded-lg py-2.5 text-sm font-semibold transition-colors ${period === p ? "bg-card shadow-sm" : "text-muted-foreground"}`}>
+                {p === "monthly" ? "Mensuel" : "Annuel"}
+                {p === "yearly" && saving > 0 && <span className="absolute -right-1 -top-2 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">-{Math.round((saving / (plans!.monthly * 12)) * 100)} %</span>}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-5 text-center">
+            <p className="text-4xl font-extrabold tracking-tight">{price != null ? formatNumber(price) : "–"} <span className="text-lg font-semibold text-muted-foreground">FCFA</span></p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {period === "yearly" ? `soit ${formatNumber(monthlyEquivalent ?? 0)} F/mois · ${formatNumber(saving)} F d'économie` : "par mois, sans engagement"}
+            </p>
+          </div>
+
+          {pending ? (
+            <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+              <p className="flex items-center gap-2 font-semibold"><Smartphone className="h-4 w-4" /> Validez sur votre téléphone</p>
+              <p className="mt-1 text-muted-foreground">{pending}</p>
+              <button onClick={async () => { await afterPayment(); setPending(null); }} className="mt-3 font-semibold text-primary hover:underline">J'ai validé le paiement</button>
+            </div>
+          ) : (
+            <form
+              className="mt-6 space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                pay.mutate({ data: { operator, phoneNumber: phone, period } });
+              }}
+            >
+              <div>
+                <span className="mb-1.5 block text-sm font-medium">Opérateur</span>
+                <div className="grid grid-cols-3 gap-2">
+                  {OPERATORS.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => setOperator(o.id)}
+                      className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-2.5 text-xs font-semibold transition-colors ${operator === o.id ? "border-foreground" : "border-transparent bg-muted/60"}`}
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-black" style={{ background: o.color, color: o.text }}>{o.name.charAt(0)}</span>
+                      {o.name}
+                    </button>
                   ))}
-                </ul>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-primary" />
-                Paiement Sécurisé
-              </CardTitle>
-              <CardDescription>
-                Après le clic, vous recevrez une notification sur votre téléphone pour confirmer le paiement.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Opérateur</Label>
-                <Select value={operator} onValueChange={(v: any) => setOperator(v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mtn">MTN Mobile Money</SelectItem>
-                    <SelectItem value="moov">Moov Money</SelectItem>
-                    <SelectItem value="wave">Wave</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Numéro de téléphone</Label>
-                <Input placeholder="Ex: +229..." value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} />
-              </div>
-              <Button className="w-full" onClick={handlePayment} disabled={paymentMutation.isPending}>
-                {paymentMutation.isPending ? "Initiation en cours..." : "Payer 360 FCFA — Devenir Pro"}
-              </Button>
-              <p className="text-xs text-center text-muted-foreground">Vous recevrez une notification sur votre téléphone pour valider.</p>
-            </CardContent>
-          </Card>
-        </div>
+              <FormField label="Numéro Mobile Money">
+                <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+229 97 00 00 00" className={fieldCls} />
+              </FormField>
+              <button type="submit" disabled={pay.isPending || phone.replace(/\D/g, "").length < 8} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 font-semibold text-primary-foreground disabled:opacity-50">
+                {pay.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Payer {price != null ? `${formatNumber(price)} FCFA` : ""}
+              </button>
+              {import.meta.env.DEV && (
+                <button type="button" onClick={() => simulate.mutate({ period })} disabled={simulate.isPending} className="w-full rounded-xl border border-dashed py-2.5 text-xs font-medium text-muted-foreground hover:bg-muted">
+                  Mode développement : simuler un paiement réussi
+                </button>
+              )}
+            </form>
+          )}
+        </Panel>
+      </div>
+
+      {history && history.length > 0 && (
+        <Panel title="Historique" className="mt-6" padded={false}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b text-left text-muted-foreground">
+                <tr>
+                  <th className="px-5 py-3 font-medium">Date</th>
+                  <th className="px-5 py-3 font-medium">Formule</th>
+                  <th className="px-5 py-3 font-medium">Montant</th>
+                  <th className="px-5 py-3 font-medium">Statut</th>
+                  <th className="px-5 py-3 font-medium">Valable jusqu'au</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {history.map((h) => (
+                  <tr key={h.id}>
+                    <td className="whitespace-nowrap px-5 py-3">{new Date(h.createdAt).toLocaleDateString("fr-FR")}</td>
+                    <td className="px-5 py-3">{h.grantedByAdmin ? "Offert" : h.period === "yearly" ? "Annuel" : "Mensuel"}</td>
+                    <td className="whitespace-nowrap px-5 py-3">{formatNumber(h.amount)} F</td>
+                    <td className="px-5 py-3">
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${h.status === "success" ? "bg-emerald-500/10 text-emerald-700" : h.status === "pending" ? "bg-amber-500/10 text-amber-700" : "bg-red-500/10 text-red-600"}`}>
+                        {h.status === "success" ? "Payé" : h.status === "pending" ? "En attente" : "Échoué"}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-muted-foreground">{h.expiresAt ? new Date(h.expiresAt).toLocaleDateString("fr-FR") : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
       )}
     </DashboardLayout>
   );

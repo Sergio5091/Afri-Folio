@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@400;500;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Serif+Display&family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -128,7 +128,7 @@
   --chart-5: 340 30% 50%; /* Warm purple */
 
   --app-font-sans: 'Plus Jakarta Sans', sans-serif;
-  --app-font-display: 'Cabinet Grotesk', sans-serif;
+  --app-font-display: 'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif;
   
   --radius: 0.75rem;
 
@@ -280,4 +280,87 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+}
+
+/* ============================================================
+   PORTFOLIOS — variables posées par <PortfolioView>
+   ============================================================ */
+@layer components {
+  .pf-root {
+    background: var(--pf-bg);
+    color: var(--pf-fg);
+    font-family: var(--pf-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  .pf-root :is(h1, h2, h3, h4) {
+    font-family: inherit;
+    letter-spacing: inherit;
+  }
+  .pf-root .pf-display,
+  .pf-root :is(h1, h2).pf-display {
+    font-family: var(--pf-display);
+  }
+  .pf-muted {
+    color: var(--pf-muted);
+  }
+  .pf-card {
+    background: var(--pf-surface);
+    border: 1px solid var(--pf-border);
+    border-radius: var(--pf-radius);
+  }
+  .pf-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1.5rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1.2;
+    transition: transform 0.15s ease, background-color 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+  }
+  .pf-btn:active {
+    transform: scale(0.97);
+  }
+  .pf-btn-primary {
+    background: var(--pf-primary);
+    color: var(--pf-on-primary);
+    box-shadow: 0 8px 24px -10px var(--pf-primary);
+  }
+  .pf-btn-primary:hover {
+    opacity: 0.92;
+    transform: translateY(-1px);
+  }
+  .pf-btn-ghost {
+    border: 1px solid var(--pf-border);
+    background: var(--pf-surface);
+    color: var(--pf-fg);
+  }
+  .pf-btn-ghost:hover {
+    border-color: var(--pf-primary);
+  }
+  /* Le template Chantier a des angles plus francs */
+  .tpl-chantier .pf-btn {
+    border-radius: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 0.875rem;
+  }
+  .tpl-galerie .pf-btn {
+    border-radius: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-root *,
+  .pf-root *::before,
+  .pf-root *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html {
+  scroll-behavior: smooth;
 }

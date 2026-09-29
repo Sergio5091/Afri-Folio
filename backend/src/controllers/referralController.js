@@ -116,14 +116,15 @@ async function requestWithdrawal(req, res, next) {
       [userId]
     );
     const [withdrawn] = await pool.query(
-      "SELECT COALESCE(SUM(amount), 0) AS totalWithdrawn FROM withdrawals WHERE user_id = ? AND status = 'approved'",
+      // Les retraits en attente sont déjà réservés : ils ne peuvent pas être redemandés
+      "SELECT COALESCE(SUM(amount), 0) AS totalWithdrawn FROM withdrawals WHERE user_id = ? AND status IN ('approved', 'pending')",
       [userId]
     );
 
     const walletBalance = earned[0].totalEarned - withdrawn[0].totalWithdrawn;
 
     if (parseInt(amount) > walletBalance) {
-      return res.status(400).json({ message: "Solde insuffisant" });
+      return res.status(400).json({ message: "Solde insuffisant (les retraits en attente sont déjà déduits)" });
     }
 
     // Créer la demande de retrait

@@ -1,95 +1,76 @@
-import { ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Users, Wallet, LogOut, Shield, BarChart3, ChevronRight } from "lucide-react";
+import { Briefcase, CreditCard, ExternalLink, LayoutDashboard, LogOut, Shield, Users, Wallet } from "lucide-react";
+import { useGetAdminStats } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/auth";
+import { LogoMark } from "./brand";
 
-interface AdminLayoutProps {
-  children: ReactNode;
-}
-
-export function AdminLayout({ children }: AdminLayoutProps) {
+export function AdminLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { logout, user } = useAuth();
+  const { data: stats } = useGetAdminStats(30, { query: { staleTime: 60_000 } });
 
   const navigation = [
-    { name: "Vue d'ensemble", href: "/admin",            icon: LayoutDashboard },
-    { name: "Utilisateurs",   href: "/admin/utilisateurs", icon: Users },
-    { name: "Retraits",       href: "/admin/retraits",    icon: Wallet },
-    { name: "Statistiques",   href: "/admin/stats",       icon: BarChart3 },
+    { name: "Vue d'ensemble", short: "Accueil", href: "/admin", icon: LayoutDashboard },
+    { name: "Utilisateurs", short: "Users", href: "/admin/utilisateurs", icon: Users },
+    { name: "Paiements", short: "Paiements", href: "/admin/paiements", icon: CreditCard },
+    { name: "Retraits", short: "Retraits", href: "/admin/retraits", icon: Wallet, badge: stats?.pendingWithdrawals },
+    { name: "Métiers", short: "Métiers", href: "/admin/metiers", icon: Briefcase },
   ];
+  const isActive = (href: string) => (href === "/admin" ? location === href : location.startsWith(href));
 
   return (
-    <div className="min-h-screen bg-muted/20 flex">
-
-      {/* Sidebar */}
-      <aside className="w-64 flex-col border-r bg-background sticky top-0 h-screen hidden md:flex">
-        {/* Logo admin */}
-        <div className="px-5 py-5 border-b">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
-              <Shield className="w-4 h-4 text-primary" />
-            </div>
-            <div>
-              <p className="font-display font-bold text-base text-primary leading-none">AfriFolio</p>
-              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Admin Panel</p>
-            </div>
+    <div className="min-h-screen bg-[hsl(220_14%_97%)] md:flex">
+      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col bg-[#14110f] text-white md:flex">
+        <div className="flex items-center gap-2.5 px-5 py-5">
+          <LogoMark className="h-8 w-8" />
+          <div>
+            <p className="font-display text-base font-bold leading-none">AfriFolio</p>
+            <p className="mt-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-white/50"><Shield className="h-3 w-3" /> Administration</p>
           </div>
-          {user && (
-            <p className="text-xs text-muted-foreground mt-3 truncate">{user.email}</p>
-          )}
         </div>
-
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
-          {navigation.map((item) => {
-            const isActive = location === item.href;
-            return (
-              <Link key={item.href} href={item.href}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm font-medium ${
-                  isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                <item.icon className="w-4 h-4 shrink-0" />
-                <span className="flex-1">{item.name}</span>
-                {isActive && <ChevronRight className="w-3.5 h-3.5 opacity-50" />}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 space-y-0.5 px-3 py-2">
+          {navigation.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${isActive(item.href) ? "bg-white/10 text-white" : "text-white/60 hover:bg-white/5 hover:text-white"}`}
+            >
+              <item.icon className="h-4 w-4" />
+              {item.name}
+              {!!item.badge && <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-bold leading-none">{item.badge}</span>}
+            </Link>
+          ))}
         </nav>
-
-        {/* Logout */}
-        <div className="p-3 border-t space-y-1">
-          <Link href="/dashboard"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted transition-all">
-            <LayoutDashboard className="w-4 h-4" /> Mon dashboard
+        <div className="space-y-1 border-t border-white/10 p-3">
+          <p className="truncate px-3 pb-1 text-xs text-white/40">{user?.email}</p>
+          <Link href="/dashboard" className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-white/60 hover:bg-white/5 hover:text-white">
+            <ExternalLink className="h-4 w-4" /> Mon espace
           </Link>
-          <button onClick={logout}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive w-full transition-all">
-            <LogOut className="w-4 h-4" /> Déconnexion
+          <button onClick={logout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-white/60 hover:bg-white/5 hover:text-white">
+            <LogOut className="h-4 w-4" /> Déconnexion
           </button>
         </div>
       </aside>
 
-      {/* Mobile header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-20 bg-background border-b px-4 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5 text-primary" />
-          <span className="font-display font-bold text-primary">Admin</span>
-        </div>
-        <div className="flex gap-1">
-          {navigation.map((item) => (
-            <Link key={item.href} href={item.href}
-              className={`p-2 rounded-lg transition-colors ${location === item.href ? "bg-primary/10 text-primary" : "text-muted-foreground"}`}>
-              <item.icon className="w-4 h-4" />
-            </Link>
-          ))}
-        </div>
-      </div>
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between bg-[#14110f] px-4 text-white md:hidden">
+        <span className="flex items-center gap-2 font-bold"><LogoMark className="h-7 w-7" /> Admin</span>
+        <button onClick={logout} className="rounded-lg p-2 text-white/70" aria-label="Déconnexion"><LogOut className="h-4 w-4" /></button>
+      </header>
 
-      {/* Main */}
-      <main className="flex-1 p-4 md:p-8 w-full max-w-7xl mt-14 md:mt-0">
-        {children}
+      <main className="min-w-0 flex-1 px-4 pb-24 pt-6 sm:px-6 md:pb-10 lg:px-10 lg:pt-10">
+        <div className="mx-auto max-w-7xl">{children}</div>
       </main>
+
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-5 border-t bg-card md:hidden">
+        {navigation.map((item) => (
+          <Link key={item.href} href={item.href} className={`relative flex flex-col items-center justify-center gap-1 text-[10px] font-medium ${isActive(item.href) ? "text-primary" : "text-muted-foreground"}`}>
+            <item.icon className="h-5 w-5" />
+            {item.short}
+            {!!item.badge && <span className="absolute right-[25%] top-2 h-2 w-2 rounded-full bg-primary" />}
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }

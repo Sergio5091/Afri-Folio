@@ -1,25 +1,40 @@
-import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
+import { lazy, Suspense, type ComponentType } from "react";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/auth";
 
-import NotFound from "@/pages/not-found";
+// Pages publiques légères : chargées tout de suite
 import Home from "@/pages/home";
-import Register from "@/pages/register";
-import Login from "@/pages/login";
-import Dashboard from "@/pages/dashboard/index";
-import ProfileEdit from "@/pages/dashboard/profile";
-import ProjectsDashboard from "@/pages/dashboard/projects";
-import Referral from "@/pages/dashboard/referral";
-import Analytics from "@/pages/dashboard/analytics";
-import Subscription from "@/pages/dashboard/subscription";
 import PublicPortfolio from "@/pages/portfolio/public";
-import AdminPanel from "@/pages/admin/index";
-import AdminLogin from "@/pages/admin/login";
-import AdminUsers from "@/pages/admin/users";
-import AdminWithdrawals from "@/pages/admin/withdrawals";
-import AdminStats from "@/pages/admin/stats";
+import NotFound from "@/pages/not-found";
+
+// Le reste est chargé à la demande : un visiteur de portfolio ne télécharge
+// ni l'espace client, ni l'administration, ni les graphiques.
+const Onboarding = lazy(() => import("@/pages/onboarding"));
+const Login = lazy(() => import("@/pages/login"));
+const AdminLogin = lazy(() => import("@/pages/login").then((m) => ({ default: m.AdminLogin })));
+const Exemples = lazy(() => import("@/pages/exemples"));
+const ExampleDetail = lazy(() => import("@/pages/exemples").then((m) => ({ default: m.ExampleDetail })));
+const Annuaire = lazy(() => import("@/pages/annuaire"));
+
+const Dashboard = lazy(() => import("@/pages/dashboard/index"));
+const PageEditor = lazy(() => import("@/pages/dashboard/page-editor"));
+const ProfileEdit = lazy(() => import("@/pages/dashboard/profile"));
+const Appearance = lazy(() => import("@/pages/dashboard/appearance"));
+const Messages = lazy(() => import("@/pages/dashboard/messages"));
+const Analytics = lazy(() => import("@/pages/dashboard/analytics"));
+const Subscription = lazy(() => import("@/pages/dashboard/subscription"));
+const Referral = lazy(() => import("@/pages/dashboard/referral"));
+const Account = lazy(() => import("@/pages/dashboard/account"));
+
+const AdminOverview = lazy(() => import("@/pages/admin/index"));
+const AdminUsers = lazy(() => import("@/pages/admin/users"));
+const AdminPayments = lazy(() => import("@/pages/admin/payments"));
+const AdminWithdrawals = lazy(() => import("@/pages/admin/withdrawals"));
+const AdminProfessions = lazy(() => import("@/pages/admin/professions"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,72 +45,69 @@ const queryClient = new QueryClient({
         return failureCount < 1;
       },
       staleTime: 30_000,
+      refetchOnWindowFocus: false,
     },
   },
 });
 
-function ProtectedRoute({ component: Component, adminOnly = false }: { component: any, adminOnly?: boolean }) {
+function PageLoader() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+
+function Protected({ component: Component, admin = false }: { component: ComponentType; admin?: boolean }) {
   const { isAuthenticated, isLoading, user } = useAuth();
-
-  if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center">Chargement...</div>;
-  }
-
-  if (!isAuthenticated) {
-    return <Redirect to="/connexion" />;
-  }
-
-  if (adminOnly && !user?.isAdmin) {
-    return <Redirect to="/admin/connexion" />;
-  }
-
+  if (isLoading) return <PageLoader />;
+  if (!isAuthenticated) return <Redirect to={admin ? "/admin/connexion" : "/connexion"} />;
+  if (admin && !user?.isAdmin) return <Redirect to="/dashboard" />;
   return <Component />;
 }
 
+const dash = (c: ComponentType) => () => <Protected component={c} />;
+const adm = (c: ComponentType) => () => <Protected component={c} admin />;
+
 function Router() {
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/inscription" component={Register} />
-      <Route path="/connexion" component={Login} />
-      
-      <Route path="/dashboard">
-        {() => <ProtectedRoute component={Dashboard} />}
-      </Route>
-      <Route path="/dashboard/profil">
-        {() => <ProtectedRoute component={ProfileEdit} />}
-      </Route>
-      <Route path="/dashboard/projets">
-        {() => <ProtectedRoute component={ProjectsDashboard} />}
-      </Route>
-      <Route path="/dashboard/parrainage">
-        {() => <ProtectedRoute component={Referral} />}
-      </Route>
-      <Route path="/dashboard/analytiques">
-        {() => <ProtectedRoute component={Analytics} />}
-      </Route>
-      <Route path="/dashboard/abonnement">
-        {() => <ProtectedRoute component={Subscription} />}
-      </Route>
-      
-      <Route path="/portfolio/:username" component={PublicPortfolio} />
-      
-      <Route path="/admin">
-        {() => <ProtectedRoute component={AdminPanel} adminOnly />}
-      </Route>
-      <Route path="/admin/utilisateurs">
-        {() => <ProtectedRoute component={AdminUsers} adminOnly />}
-      </Route>
-      <Route path="/admin/retraits">
-        {() => <ProtectedRoute component={AdminWithdrawals} adminOnly />}
-      </Route>
-      <Route path="/admin/stats">
-        {() => <ProtectedRoute component={AdminStats} adminOnly />}
-      </Route>
-      <Route path="/admin/connexion" component={AdminLogin} />
-      
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/inscription" component={Onboarding} />
+        <Route path="/connexion">{() => <Login />}</Route>
+        <Route path="/exemples" component={Exemples} />
+        <Route path="/exemples/:profession" component={ExampleDetail} />
+        <Route path="/annuaire" component={Annuaire} />
+
+        <Route path="/dashboard">{dash(Dashboard)}</Route>
+        <Route path="/dashboard/ma-page">{dash(PageEditor)}</Route>
+        <Route path="/dashboard/profil">{dash(ProfileEdit)}</Route>
+        <Route path="/dashboard/apparence">{dash(Appearance)}</Route>
+        <Route path="/dashboard/messages">{dash(Messages)}</Route>
+        <Route path="/dashboard/statistiques">{dash(Analytics)}</Route>
+        <Route path="/dashboard/abonnement">{dash(Subscription)}</Route>
+        <Route path="/dashboard/parrainage">{dash(Referral)}</Route>
+        <Route path="/dashboard/compte">{dash(Account)}</Route>
+        {/* Anciennes adresses */}
+        <Route path="/dashboard/projets"><Redirect to="/dashboard/ma-page" /></Route>
+        <Route path="/dashboard/analytiques"><Redirect to="/dashboard/statistiques" /></Route>
+
+        <Route path="/admin/connexion" component={AdminLogin} />
+        <Route path="/admin">{adm(AdminOverview)}</Route>
+        <Route path="/admin/utilisateurs">{adm(AdminUsers)}</Route>
+        <Route path="/admin/paiements">{adm(AdminPayments)}</Route>
+        <Route path="/admin/retraits">{adm(AdminWithdrawals)}</Route>
+        <Route path="/admin/metiers">{adm(AdminProfessions)}</Route>
+        <Route path="/admin/stats"><Redirect to="/admin" /></Route>
+
+        {/* Portfolios : afrifolio.com/identifiant (et l'ancienne forme /portfolio/identifiant) */}
+        <Route path="/portfolio/:username" component={PublicPortfolio} />
+        <Route path="/:username" component={PublicPortfolio} />
+
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 

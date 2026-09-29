@@ -17,6 +17,7 @@ const MIGRATIONS = [
   "002_add_profile_type_and_projects.sql",
   "003_add_new_themes.sql",
   "004_professions_blocks_leads.sql",
+  "005_social_links.sql",
 ];
 
 /** Découpe un fichier SQL en instructions (une instruction se termine par ";" en fin de ligne). */

@@ -1,274 +1,154 @@
-import { useGetReferralStats, useGetCommissions, useRequestWithdrawal, getGetReferralStatsQueryKey, getGetCommissionsQueryKey } from "@workspace/api-client-react";
-import { DashboardLayout } from "@/components/dashboard-layout";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
-import { Copy, Users, Wallet, CreditCard, ArrowRightLeft } from "lucide-react";
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from "@tanstack/react-query";
+import { Check, Copy, Gift, Loader2, MessageCircle, UserPlus, Users, Wallet, X } from "lucide-react";
+import {
+  getGetReferralStatsQueryKey, useGetCommissions, useGetPlans, useGetReferralStats, useRequestWithdrawal,
+} from "@workspace/api-client-react";
+import { DashboardLayout } from "@/components/dashboard-layout";
+import { EmptyState, FormField, PageHeader, Panel, StatCard, fieldCls } from "@/components/dashboard/ui";
+import { useToast } from "@/hooks/use-toast";
+import { copyText, whatsappShare } from "@/lib/share";
+import { formatNumber } from "@/lib/utils";
+
+const MIN_WITHDRAWAL = 500;
 
 export default function Referral() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const MOCK_STATS = {
-    referralCode: "REF-JEAN42",
-    referralLink: `${window.location.origin}/inscription?ref=REF-JEAN42`,
-    totalReferrals: 5,
-    activeReferrals: 3,
-    walletBalance: 108,
-    totalEarned: 216,
-    totalWithdrawn: 108,
-  };
+  const { data: stats } = useGetReferralStats();
+  const { data: commissions } = useGetCommissions();
+  const { data: plans } = useGetPlans();
+  const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState("");
+  const [method, setMethod] = useState<"mobile_money" | "subscription_credit">("mobile_money");
+  const [phone, setPhone] = useState("");
 
-  const MOCK_COMMISSIONS = [
-    { id: 1, refereeId: 2, refereeUsername: "aminata-k", amount: 36, month: "2025-04", status: "paid" as const, createdAt: "2025-04-01" },
-    { id: 2, refereeId: 3, refereeUsername: "kofi-mensah", amount: 36, month: "2025-04", status: "paid" as const, createdAt: "2025-04-01" },
-    { id: 3, refereeId: 4, refereeUsername: "fatou-d", amount: 36, month: "2025-05", status: "pending" as const, createdAt: "2025-05-01" },
-  ];
-
-  const { data: fetchedStats } = useGetReferralStats({
-    query: { queryKey: getGetReferralStatsQueryKey(), retry: false, placeholderData: MOCK_STATS },
-  });
-  const { data: fetchedCommissions } = useGetCommissions({
-    query: { queryKey: getGetCommissionsQueryKey(), retry: false, placeholderData: MOCK_COMMISSIONS },
+  const withdraw = useRequestWithdrawal({
+    onSuccess: () => {
+      toast({ title: "Demande envoyée", description: "Elle sera traitée sous 72 h." });
+      setOpen(false);
+      setAmount("");
+      queryClient.invalidateQueries({ queryKey: getGetReferralStatsQueryKey() });
+    },
+    onError: (e: any) => toast({ title: "Demande refusée", description: e?.message, variant: "destructive" }),
   });
 
-  const stats = fetchedStats ?? MOCK_STATS;
-  const commissions = fetchedCommissions ?? MOCK_COMMISSIONS;
-  const withdrawMutation = useRequestWithdrawal();
-  
-  const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [withdrawMethod, setWithdrawMethod] = useState<"mobile_money" | "subscription_credit">("mobile_money");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-
-  const copyReferralLink = () => {
-    if (stats?.referralLink) {
-      navigator.clipboard.writeText(stats.referralLink);
-      toast({ title: "Lien copié !", description: "Partagez ce lien pour parrainer vos amis." });
-    }
-  };
-
-  const handleWithdrawal = () => {
-    const amount = parseInt(withdrawAmount);
-    if (isNaN(amount) || amount < 500) {
-      toast({ title: "Montant invalide", description: "Le minimum de retrait est de 500 FCFA.", variant: "destructive" });
-      return;
-    }
-    
-    if (stats && amount > stats.walletBalance) {
-      toast({ title: "Fonds insuffisants", description: "Votre solde est inférieur au montant demandé.", variant: "destructive" });
-      return;
-    }
-
-    if (withdrawMethod === "mobile_money" && !phoneNumber) {
-      toast({ title: "Numéro requis", description: "Veuillez entrer votre numéro Mobile Money.", variant: "destructive" });
-      return;
-    }
-
-    withdrawMutation.mutate({
-      data: {
-        amount,
-        method: withdrawMethod,
-        phoneNumber: withdrawMethod === "mobile_money" ? phoneNumber : undefined
-      }
-    }, {
-      onSuccess: () => {
-        toast({ title: "Demande envoyée", description: "Votre demande de retrait a été enregistrée." });
-        setIsDialogOpen(false);
-        queryClient.invalidateQueries({ queryKey: getGetReferralStatsQueryKey() });
-      },
-      onError: (error: any) => {
-        toast({ title: "Erreur", description: error?.data?.message || "Impossible de traiter la demande.", variant: "destructive" });
-      }
-    });
-  };
-
-  if (false) {
-    return (
-      <DashboardLayout>
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-muted rounded w-1/4"></div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="h-32 bg-muted rounded-xl"></div>
-            <div className="h-32 bg-muted rounded-xl"></div>
-            <div className="h-32 bg-muted rounded-xl"></div>
-          </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+  const rate = plans?.commissionRate ?? 0.1;
+  const link = stats?.referralLink ?? "";
+  const invite = `Je crée mon portfolio pro avec AfriFolio : en 5 minutes, ta page avec tes réalisations, tes prix et ton WhatsApp. Essaie gratuitement : ${link}`;
 
   return (
     <DashboardLayout>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold font-display">Parrainage</h1>
-        <p className="text-muted-foreground mt-1">Gagnez des commissions en invitant d'autres freelances.</p>
+      <PageHeader title="Parrainage" description={`Invitez d'autres professionnels et gagnez ${Math.round(rate * 100)} % de chacun de leurs paiements Pro.`} />
+
+      <section className="rounded-3xl border bg-gradient-to-br from-primary/10 via-card to-card p-5 sm:p-7">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="flex items-center gap-2 text-sm font-semibold text-primary"><Gift className="h-4 w-4" /> Votre lien d'invitation</p>
+            <p className="mt-2 break-all font-mono text-sm sm:text-base">{link || "…"}</p>
+            <p className="mt-1 text-sm text-muted-foreground">Code : <strong>{stats?.referralCode}</strong></p>
+          </div>
+          <div className="grid shrink-0 grid-cols-2 gap-2">
+            <a href={whatsappShare(invite)} target="_blank" rel="noreferrer" className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-5 py-3 text-sm font-semibold text-white sm:col-span-1">
+              <MessageCircle className="h-4 w-4" /> Inviter sur WhatsApp
+            </a>
+            <button
+              onClick={async () => {
+                if (await copyText(link)) {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }
+              }}
+              className="col-span-2 inline-flex items-center justify-center gap-2 rounded-xl border bg-card px-5 py-3 text-sm font-semibold hover:bg-muted sm:col-span-1"
+            >
+              {copied ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />} {copied ? "Copié" : "Copier le lien"}
+            </button>
+          </div>
+        </div>
+        <ol className="mt-6 grid gap-3 border-t pt-6 text-sm sm:grid-cols-3">
+          {["Partagez votre lien à des collègues, amis, clients pros", "Ils créent leur portfolio gratuitement", `Quand ils passent Pro, vous gagnez ${Math.round(rate * 100)} % de chaque paiement`].map((s, i) => (
+            <li key={i} className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">{i + 1}</span>
+              <span className="text-muted-foreground">{s}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <StatCard label="Inscrits via vous" value={stats?.totalReferrals ?? "–"} icon={UserPlus} />
+        <StatCard label="Filleuls Pro" value={stats?.activeReferrals ?? "–"} icon={Users} tone="green" />
+        <StatCard label="Gains totaux" value={`${formatNumber(stats?.totalEarned ?? 0)} F`} icon={Gift} tone="amber" />
+        <StatCard label="Solde disponible" value={`${formatNumber(stats?.walletBalance ?? 0)} F`} icon={Wallet} tone="blue" hint={`${formatNumber(stats?.totalWithdrawn ?? 0)} F retirés`} />
       </div>
 
-      {/* Bloc explication gains */}
-      <div className="bg-card border rounded-2xl p-5 mb-8 grid sm:grid-cols-3 gap-4 text-center">
-        <div className="p-3">
-          <p className="text-2xl font-black text-primary">36 FCFA</p>
-          <p className="text-xs text-muted-foreground mt-1">par ami abonné / mois</p>
-        </div>
-        <div className="p-3 border-x">
-          <p className="text-2xl font-black text-primary">360 FCFA</p>
-          <p className="text-xs text-muted-foreground mt-1">si 10 amis = 1 an gratuit</p>
-        </div>
-        <div className="p-3">
-          <p className="text-2xl font-black text-primary">Sans limite</p>
-          <p className="text-xs text-muted-foreground mt-1">de filleuls possibles</p>
-        </div>
-      </div>
-
-      {stats && (
-        <Card className="mb-8 border-primary/20 bg-primary/5">
-          <CardHeader>
-            <CardTitle>Votre lien de parrainage</CardTitle>
-            <CardDescription>Partagez ce lien et gagnez des commissions pour chaque abonnement Premium.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="bg-background border rounded-md px-4 py-2 flex-1 font-mono text-sm overflow-hidden text-ellipsis whitespace-nowrap">
-                {stats.referralLink}
-              </div>
-              <Button onClick={copyReferralLink} className="gap-2 shrink-0">
-                <Copy className="w-4 h-4" /> Copier le lien
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Filleuls Inscrits</CardTitle>
-            <Users className="w-4 h-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalReferrals || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">{stats?.activeReferrals || 0} actifs (Premium)</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Gains Totaux</CardTitle>
-            <Wallet className="w-4 h-4 text-primary" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalEarned || 0} FCFA</div>
-            <p className="text-xs text-muted-foreground mt-1">{stats?.totalWithdrawn || 0} FCFA retirés</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Solde Disponible</CardTitle>
-            <CreditCard className="w-4 h-4 text-primary" />
-          </CardHeader>
-          <CardContent className="flex justify-between items-end">
-            <div>
-              <div className="text-2xl font-bold">{stats?.walletBalance || 0} FCFA</div>
-            </div>
-            
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" variant="secondary" disabled={!stats || stats.walletBalance < 500}>
-                  Retirer
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Demander un retrait</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>Montant (FCFA)</Label>
-                    <Input 
-                      type="number" 
-                      placeholder="500 minimum" 
-                      value={withdrawAmount} 
-                      onChange={(e) => setWithdrawAmount(e.target.value)} 
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Méthode de retrait</Label>
-                    <Select value={withdrawMethod} onValueChange={(v: any) => setWithdrawMethod(v)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="mobile_money">Mobile Money</SelectItem>
-                        <SelectItem value="subscription_credit">Crédit d'abonnement</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {withdrawMethod === "mobile_money" && (
-                    <div className="space-y-2">
-                      <Label>Numéro de téléphone</Label>
-                      <Input 
-                        placeholder="Ex: +229..." 
-                        value={phoneNumber} 
-                        onChange={(e) => setPhoneNumber(e.target.value)} 
-                      />
-                    </div>
-                  )}
-                  <Button 
-                    className="w-full" 
-                    onClick={handleWithdrawal}
-                    disabled={withdrawMutation.isPending}
-                  >
-                    {withdrawMutation.isPending ? "Traitement..." : "Confirmer le retrait"}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Historique des commissions</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="mt-6 grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+        <Panel title="Commissions" padded={false}>
           {!commissions || commissions.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground text-sm">
-              Aucune commission pour le moment. Partagez votre lien !
-            </div>
+            <EmptyState icon={Gift} title="Pas encore de commission" description="Vos gains apparaîtront ici dès qu'un filleul passera Pro." />
           ) : (
-            <div className="space-y-4">
-              {commissions.map((comm) => (
-                <div key={comm.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-primary/10 p-2 rounded-full text-primary">
-                      <ArrowRightLeft className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-sm">Parrainage : @{comm.refereeUsername}</div>
-                      <div className="text-xs text-muted-foreground">{new Date(comm.createdAt).toLocaleDateString()}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-primary">+{comm.amount} FCFA</div>
-                    <div className={`text-xs capitalize ${
-                      comm.status === "paid" ? "text-emerald-600" : "text-amber-600"
-                    }`}>
-                      {comm.status === "paid" ? "✅ Payé" : "⏳ En attente"}
-                    </div>
-                  </div>
-                </div>
+            <ul className="divide-y">
+              {commissions.map((c) => (
+                <li key={c.id} className="flex items-center justify-between px-5 py-3 text-sm">
+                  <span>
+                    <span className="font-medium">{c.refereeUsername}</span>
+                    <span className="ml-2 text-muted-foreground">{c.month}</span>
+                  </span>
+                  <span className="font-semibold text-emerald-600">+{formatNumber(c.amount)} F</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel title="Retirer mes gains" description={`À partir de ${MIN_WITHDRAWAL} FCFA, par Mobile Money ou en mois d'abonnement Pro.`}>
+          <button
+            onClick={() => setOpen(true)}
+            disabled={(stats?.walletBalance ?? 0) < MIN_WITHDRAWAL}
+            className="w-full rounded-xl bg-foreground py-3 text-sm font-semibold text-background disabled:opacity-40"
+          >
+            Demander un retrait
+          </button>
+          {(stats?.walletBalance ?? 0) < MIN_WITHDRAWAL && (
+            <p className="mt-3 text-center text-xs text-muted-foreground">Encore {formatNumber(MIN_WITHDRAWAL - (stats?.walletBalance ?? 0))} F avant votre premier retrait.</p>
+          )}
+        </Panel>
+      </div>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4" onClick={() => setOpen(false)}>
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={(e) => {
+              e.preventDefault();
+              withdraw.mutate({ data: { amount: parseInt(amount), method, phoneNumber: method === "mobile_money" ? phone : undefined } });
+            }}
+            className="w-full max-w-md space-y-4 rounded-t-3xl bg-card p-6 sm:rounded-3xl"
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-lg font-bold">Demande de retrait</p>
+              <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-1.5 hover:bg-muted" aria-label="Fermer"><X className="h-5 w-5" /></button>
+            </div>
+            <FormField label="Montant (FCFA)" hint={`Solde disponible : ${formatNumber(stats?.walletBalance ?? 0)} F`}>
+              <input type="number" min={MIN_WITHDRAWAL} max={stats?.walletBalance} required value={amount} onChange={(e) => setAmount(e.target.value)} className={fieldCls} />
+            </FormField>
+            <div className="grid grid-cols-2 gap-2">
+              {([["mobile_money", "Mobile Money"], ["subscription_credit", "Mois de Pro"]] as const).map(([v, l]) => (
+                <button key={v} type="button" onClick={() => setMethod(v)} className={`rounded-xl border-2 py-2.5 text-sm font-semibold ${method === v ? "border-primary bg-primary/5" : ""}`}>{l}</button>
               ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+            {method === "mobile_money" && (
+              <FormField label="Numéro Mobile Money">
+                <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+229 97 00 00 00" className={fieldCls} />
+              </FormField>
+            )}
+            <button type="submit" disabled={withdraw.isPending} className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3 font-semibold text-primary-foreground">
+              {withdraw.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Envoyer la demande
+            </button>
+          </form>
+        </div>
+      )}
     </DashboardLayout>
   );
 }
